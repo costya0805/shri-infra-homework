@@ -1,0 +1,60 @@
+name: Деплой релиза
+
+on:
+    workflow_dispatch:
+        inputs:
+            release_version:
+                description: "Версия релиза"
+                required: true
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Auth with Ya.Cloud
+              run: echo "${{ secrets.OAUTH }}" | docker login --username oauth --password-stdin cr.yandex
+
+            - name: Connect to the VM and Deploy
+              uses: appleboy/ssh-action@master
+              with:
+                  host: ${{ secrets.PUBLICK_IP }}
+                  username: ${{ secrets.VM_USERNAME }}
+                  key: ${{ secrets.SSH_PRIVATE_KEY }}
+                  script: |
+                      docker pull cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+                      docker rm -f ${{ vars.CONTAINER_NAME }} || true
+                      docker run -d --name ${{ vars.CONTAINER_NAME }} -p ${{ vars.PORT }}:${{ vars.PORT }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID  }}/app:${{ github.event.inputs.release_version }}_latest
+                      docker container prune
+                      docker image prune -a
+
+    add-comment-to-issue:
+        needs: deploy
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Create GitHub Issue comment
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const releaseVersion = "${{ github.event.inputs.release_version }}";
+                      const issues = await github.rest.issues.listForRepo({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        state: 'open',
+                      });
+
+                      const issue = issues.data.find(issue => issue.title.startsWith(`Release v${releaseVersion}`));
+                      let issueNumber = issue.number;
+
+                      const today = new Date().toISOString().split('T')[0];
+                      const comment_body = `### Релиз был успешно проведен
+                        - **Дата**: ${today}
+                        - **Автор**: ${{ github.actor }}
+                        - **Docker образ**: [Ссылка](https:cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest)`;
+                      github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: issueNumber,
+                        body: comment_body
+                      });

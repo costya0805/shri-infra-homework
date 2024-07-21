@@ -59,12 +59,12 @@ jobs:
                       const today = new Date().toISOString().split('T')[0];
                       const issueTitle = `Release v${{ github.run_number }}`;
                       const issueBody = `
-                        **Дата:** ${today}
-                        **Автор:** ${{ github.actor }}
-                        **Версия:** v${{ github.run_number }}
-                        **Список коммитов:**
+                        - **Дата:** ${today}
+                        - **Автор:** ${{ github.actor }}
+                        - **Версия:** v${{ github.run_number }}
+                        - **Список коммитов:**
                         ${{ env.COMMITS }}
-                        **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
+                        - **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
                       `;
                       github.rest.issues.create({
                         owner: context.repo.owner,
