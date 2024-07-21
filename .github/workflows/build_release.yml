@@ -78,7 +78,7 @@ jobs:
         needs: create-issue
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
 
             - name: Get previous release tag
               id: get-previous-tag
