@@ -24,28 +24,61 @@ jobs:
             - run: npm ci
             - run: npm run lint
 
-    create-release-branch:
-        needs: [test, eslint]
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Create release branch
-              run: |
-                  git checkout -b releases/${{ github.run_number }}
-                  git push origin releases/${{ github.run_number }}
-
     build-docker-image:
-        needs: [create-release-branch]
+        needs: [test, eslint]
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
             - name: Yandex Container Registry login
               run: echo ${{ secrets.OAUTH }} | docker login --username oauth --password-stdin cr.yandex
-            
-            - name: Build and push Docker images
+
+            - name: Build Docker images
               run: |
-                docker build -t cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/shri-infra:${{ github.run_number }} .
-                docker tag cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/shri-infra:${{ github.run_number }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/shri-infra:${{ github.run_number }}_latest
-                docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/shri-infra:${{ github.run_number }}
-                docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/shri-infra:${{ github.run_number }}_latest
+                  docker build -t cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }} .
+                  docker tag cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }}_latest
+
+            - name: Push Docker images
+              run: docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }}
+                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }}_latest
+
+    create-release-branch-and-tag:
+        needs: build-docker-image
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Create release branch
+              run: |
+                  git checkout -b releases/${{ github.run_number }}
+                  git push origin releases/${{ github.run_number }}
+            - name: Create release tag
+              run: |
+                  git tag -a v${{ github.run_number }} -m "Release v${{ github.run_number }}"
+                  git push origin --tags
+
+    create-issue:
+        runs-on: ubuntu-latest
+        needs: create-release-branch-and-tag
+        steps:
+          - name: Get latest commits
+            id: get_commits
+            run: echo "::set-output name=commits::$(git log $(git describe --tags --abbrev=0)..HEAD --oneline)"
+
+          - name: Create GitHub issue
+            uses: actions/github-script@v7
+            with:
+              script: |
+                const today = new Date().toISOString().split('T')[0];
+                const issueTitle = `Release v${{ github.run_number }}`;
+                const issueBody = `
+                  **Дата:** ${today}
+                  **Автор:** ${{ github.actor }}
+                  **Версия:** v${{ github.run_number }}
+                  **Список коммитов:**\n${{ steps.get_commits.outputs.commits }}
+                  **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
+                `;
+                github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: issueTitle,
+                  body: issueBody
+                });
