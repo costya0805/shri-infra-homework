@@ -50,7 +50,7 @@ jobs:
 
             - name: Get latest commits
               id: get_commits
-              run: echo "COMMITS=$(git log pretty=format:"%h - %s" ${env.PREV_TAG}..HEAD)" >> $GITHUB_ENV
+              run: echo "COMMITS=$(git log pretty=format:"%h - %s" HEAD)" >> $GITHUB_ENV
 
             - name: Create GitHub issue
               uses: actions/github-script@v7
@@ -63,7 +63,7 @@ jobs:
                         **Автор:** ${{ github.actor }}
                         **Версия:** v${{ github.run_number }}
                         **Список коммитов:**
-                        ${env.COMMITS}
+                        ${{ env.COMMITS }}
                         **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
                       `;
                       github.rest.issues.create({
@@ -86,13 +86,12 @@ jobs:
 
             - name: Get latest commits
               id: get_commits
-              run: |
-                  echo "COMMITS=$(git log pretty=format:"%h - %s" ${env.PREV_TAG}..HEAD)" >> $GITHUB_ENV
+              run: echo "COMMITS=$(git log pretty=format:"%h - %s" ${{ env.PREV_TAG }}..HEAD)" >> $GITHUB_ENV
 
             - name: Update CHANGELOG.md
               run: |
                   echo "## Realese v${{ github.run_number }} - $(date +'%Y-%m-%d')" > temp_changelog.md
-                  echo -e "${env.COMMITS}\n" >> temp_changelog.md
+                  echo -e "${{ env.COMMITS }}\n" >> temp_changelog.md
                   cat CHANGELOG.md >> temp_changelog.md
                   mv temp_changelog.md CHANGELOG.md
                   git config --global user.name "${{ github.actor }}"
