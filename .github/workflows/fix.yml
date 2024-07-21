@@ -1,0 +1,110 @@
+name: Добавление фикса в релиз
+
+on:
+    workflow_dispatch:
+        inputs:
+            release_version:
+                description: "Версия релиза"
+                required: true
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "20.x"
+            - run: npm ci
+            - run: npm run test
+
+    eslint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "20.x"
+            - run: npm ci
+            - run: npm run lint
+
+    create-release-fix-branch-and-tag:
+        needs: [test, eslint]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Git user
+              run: |
+                  git config --global user.name "${{ github.actor }}"
+                  git config --global user.email "${{ github.actor }}@test.ru"
+
+            - name: Create release fix branch
+              run: |
+                  git checkout -b releases/${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+                  git push origin releases/${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+            - name: Create release tag
+              run: |
+                  git tag -a v${{ github.event.inputs.release_version }}_fix${{ github.run_number }} "Release v${{ github.event.inputs.release_version }}_fix${{ github.run_number }}"
+                  git push origin --tags
+
+    build-and-push-docker-image:
+        needs: [create-release-fix-branch-and-tag]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to Yandex Container Registry
+              run: echo ${{ secrets.OAUTH }} | docker login --username oauth --password-stdin cr.yandex
+
+            - name: Build and push Docker image
+              run: |
+                  docker build -t cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} .
+                  docker tag cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+
+    add-comment-to-issue:
+        needs: [build-and-push-docker-image]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Get previous release tag
+              id: get-previous-tag
+              run: echo "PREV_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
+
+            - name: Get latest commits
+              id: get_commits
+              run: echo "COMMITS=$(git log pretty=format:"%h - %s" ${env.PREV_TAG}..HEAD)" >> $GITHUB_ENV
+
+            - name: Create GitHub Issue comment
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const releaseVersion = "${{ github.event.inputs.release_version }}";
+                      const issues = await github.rest.issues.listForRepo({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        state: 'open',
+                      });
+
+                      const issue = issues.data.find(issue => issue.title.startsWith(`Release v${releaseVersion}`));
+                      let issueNumber = issue.number;
+
+                      const today = new Date().toISOString().split('T')[0];
+                      const comment_body = `### Информация о фиксе ${{ github.run_number }}
+                        - **Дата**: ${today}
+                        - **Автор**: ${{ github.actor }}
+                        - **Список коммитов**:
+                        ${env.COMMITS}
+                        - **Docker образ**: [Ссылка](https:cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }})`;
+                      github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: issueNumber,
+                        body: comment_body
+                      });
