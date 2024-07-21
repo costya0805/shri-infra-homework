@@ -39,15 +39,77 @@ jobs:
                   docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }}
                   docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }}_latest
 
-    create-release-branch-and-tag:
+    create-issue:
+        runs-on: ubuntu-latest
         needs: build-docker-image
+        steps:
+            - uses: actions/checkout@v4
+            - name: Get previous release tag
+              id: get-previous-tag
+              run: echo "::set-output name=prev_tag::$(git describe --tags --abbrev=0)"
+
+            - name: Get latest commits
+              id: get_commits
+              run: |
+                  echo "::set-output name=commits::$(git log pretty=format:"%h - %s" ${{ steps.get-previous-tag.outputs.prev_tag }}..HEAD)"
+
+            - name: Create GitHub issue
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const today = new Date().toISOString().split('T')[0];
+                      const issueTitle = `Release v${{ github.run_number }}`;
+                      const issueBody = `
+                        **Дата:** ${today}
+                        **Автор:** ${{ github.actor }}
+                        **Версия:** v${{ github.run_number }}
+                        **Список коммитов:**\n${{ steps.get_commits.outputs.commits }}
+                        **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
+                      `;
+                      github.rest.issues.create({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        title: issueTitle,
+                        body: issueBody
+                      });
+
+    update-changelog:
+        runs-on: ubuntu-latest
+        needs: create-issue
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v2
+
+            - name: Get previous release tag
+              id: get-previous-tag
+              run: echo "::set-output name=prev_tag::$(git describe --tags --abbrev=0)"
+
+            - name: Get latest commits
+              id: get_commits
+              run: |
+                  echo "::set-output name=commits::$(git log pretty=format:"%h - %s" ${{ steps.get-previous-tag.outputs.prev_tag }}..HEAD)"
+
+            - name: Update CHANGELOG.md
+              run: |
+                  echo "## Realese v${{ github.run_number }} - $(date +'%Y-%m-%d')" > temp_changelog.md
+                  echo -e "${{ steps.get_commits.outputs.commits }}\n" >> temp_changelog.md
+                  cat CHANGELOG.md >> temp_changelog.md
+                  mv temp_changelog.md CHANGELOG.md
+                  git config --global user.name "${{ github.actor }}"
+                  git config --global user.email "${{ github.actor }}@test.ru"
+                  git add CHANGELOG.md
+                  git commit -m "Update CHANGELOG.md for v${{ github.run_number }}"
+                  git push origin main
+
+    create-release-branch-and-tag:
+        needs: update-changelog
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
             - name: Set up Git user
               run: |
-                git config --global user.name "${{ github.actor }}"
-                git config --global user.email "${{ github.actor }}@test.ru"
+                  git config --global user.name "${{ github.actor }}"
+                  git config --global user.email "${{ github.actor }}@test.ru"
             - name: Create release branch
               run: |
                   git checkout -b releases/${{ github.run_number }}
@@ -56,71 +118,3 @@ jobs:
               run: |
                   git tag -a v${{ github.run_number }} -m "Release v${{ github.run_number }}"
                   git push origin --tags
-
-    create-issue:
-        runs-on: ubuntu-latest
-        needs: create-release-branch-and-tag
-        steps:
-          - uses: actions/checkout@v4
-          - name: Get previous release tag
-            id: get-previous-tag
-            run: echo "::set-output name=prev-tag::$(git describe --tags --abbrev=0 HEAD^ || echo 'No previous tag')"
-  
-          - name: Get latest commits
-            id: get_commits
-            run: |
-              if [ "$PREV_TAG" != "No previous tag" ]; then
-                COMMITS=$(git log --pretty=format:"%h - %s" $PREV_TAG..HEAD)
-              else
-                COMMITS=$(git log --pretty=format:"%h - %s" HEAD)
-              fi
-              echo "::set-output name=commits::$COMMITS"
-
-          - name: Create GitHub issue
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const today = new Date().toISOString().split('T')[0];
-                const issueTitle = `Release v${{ github.run_number }}`;
-                const issueBody = `
-                  **Дата:** ${today}
-                  **Автор:** ${{ github.actor }}
-                  **Версия:** v${{ github.run_number }}
-                  **Список коммитов:**\n${{ steps.get_commits.outputs.commits }}
-                  **Docker образ:** [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.run_number }})
-                `;
-                github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title: issueTitle,
-                  body: issueBody
-                });
-
-    update-changelog:
-      runs-on: ubuntu-latest
-      needs: create-issue
-      steps:
-        - name: Checkout repository
-          uses: actions/checkout@v2
-
-        - name: Get latest commits
-          id: get_commits
-          run: |
-            if [ "$PREV_TAG" != "No previous tag" ]; then
-              COMMITS=$(git log --pretty=format:"%h - %s" $PREV_TAG..HEAD)
-            else
-              COMMITS=$(git log --pretty=format:"%h - %s" HEAD)
-            fi
-            echo "::set-output name=commits::$COMMITS"
-
-        - name: Update CHANGELOG.md
-          run: |
-            echo "## Realese v${{ github.run_number }} - $(date +'%Y-%m-%d')" > temp_changelog.md
-            echo -e "${{ steps.get_commits.outputs.commits }}\n" >> temp_changelog.md
-            cat CHANGELOG.md >> temp_changelog.md
-            mv temp_changelog.md CHANGELOG.md
-            git config --global user.name "${{ github.actor }}"
-            git config --global user.email "${{ github.actor }}@test.ru"
-            git add CHANGELOG.md
-            git commit -m "Update CHANGELOG.md for v${{ github.run_number }}"
-            git push origin main
