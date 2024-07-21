@@ -101,7 +101,7 @@ jobs:
                         - **Автор**: ${{ github.actor }}
                         - **Список коммитов**:
                         ${{ env.COMMITS }}
-                        - **Docker образ**: [Ссылка](https:cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }})`;
+                        - **Docker образ**: [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }})`;
                       github.rest.issues.createComment({
                         owner: context.repo.owner,
                         repo: context.repo.repo,

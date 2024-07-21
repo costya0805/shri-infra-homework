@@ -52,7 +52,7 @@ jobs:
                       const comment_body = `### Релиз был успешно проведен
                         - **Дата**: ${today}
                         - **Автор**: ${{ github.actor }}
-                        - **Docker образ**: [Ссылка](https:cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest)`;
+                        - **Docker образ**: [Ссылка](https://cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest)`;
                       github.rest.issues.createComment({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
