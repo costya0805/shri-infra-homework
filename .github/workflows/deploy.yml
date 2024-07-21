@@ -11,8 +11,8 @@ jobs:
     deploy:
         runs-on: ubuntu-latest
         steps:
-            # - name: Auth with Ya.Cloud
-            #   run:
+            - name: Auth with Ya.Cloud
+              run: echo "${{ secrets.OAUTH }}" | docker login --username oauth --password-stdin cr.yandex
 
             - name: Connect to the VM and Deploy
               uses: appleboy/ssh-action@master
@@ -21,7 +21,6 @@ jobs:
                   username: ${{ secrets.VM_USERNAME }}
                   key: ${{ secrets.SSH_PRIVATE_KEY }}
                   script: |
-                      echo "${{ secrets.OAUTH }}" | docker login --username oauth --password-stdin cr.yandex
                       sudo docker pull cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
                       sudo docker rm -f ${{ vars.CONTAINER_NAME }} || true
                       sudo docker run -d --name ${{ vars.CONTAINER_NAME }} -p ${{ vars.PORT }}:${{ vars.PORT }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID  }}/app:${{ github.event.inputs.release_version }}_latest
