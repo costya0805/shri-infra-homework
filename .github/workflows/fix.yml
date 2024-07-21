@@ -28,8 +28,27 @@ jobs:
             - run: npm ci
             - run: npm run lint
 
-    create-release-fix-branch-and-tag:
+    build-and-push-docker-image:
         needs: [test, eslint]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to Yandex Container Registry
+              run: echo ${{ secrets.OAUTH }} | docker login --username oauth --password-stdin cr.yandex
+
+            - name: Build and push Docker image
+              run: |
+                  docker build -t cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} .
+                  docker tag cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+
+    create-release-fix-branch-and-tag:
+        needs: build-and-push-docker-image
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -47,25 +66,6 @@ jobs:
               run: |
                   git tag -a v${{ github.event.inputs.release_version }}_fix${{ github.run_number }} "Release v${{ github.event.inputs.release_version }}_fix${{ github.run_number }}"
                   git push origin --tags
-
-    build-and-push-docker-image:
-        needs: [create-release-fix-branch-and-tag]
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
-
-            - name: Login to Yandex Container Registry
-              run: echo ${{ secrets.OAUTH }} | docker login --username oauth --password-stdin cr.yandex
-
-            - name: Build and push Docker image
-              run: |
-                  docker build -t cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} .
-                  docker tag cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }} cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
-                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
-                  docker push cr.yandex/${{ secrets.CONTAINER_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
 
     add-comment-to-issue:
         needs: [build-and-push-docker-image]
