@@ -13,8 +13,10 @@ export const About: React.FC = () => {
           <h1>About</h1>
           <p>
             Author: [Your Name]
+          </p>
+          <p>
             Проверяющий: ваше_имя))
-            </p>
+          </p>
         </div>
       </div>
     </div>
